@@ -21,7 +21,9 @@ from flask import redirect
 import urllib
 import requests
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
+load_dotenv()
 # Flask app setup
 app = Flask(__name__)
 CORS(app)
