@@ -8,6 +8,8 @@
 # if __name__ == '__main__':
 #     socketio.run(app, debug=True, host="0.0.0.0", port=5000)
 
+from postgrest.exceptions import APIError
+from flask import request, jsonify
 import json
 import re
 from flask import Flask, request, jsonify
@@ -439,11 +441,9 @@ def agent_create_or_update_callback():
     crm_plan = customData.get('crm_plan', None)
     licensed_states = customData.get('licensed_states', None)
     if isinstance(licensed_states, str):
-        # Convert comma-separated string to a list
         licensed_states = [state.strip() for state in re.split(
             r",\s*", licensed_states) if state.strip()]
     elif not isinstance(licensed_states, list):
-        # Ensure it's a list, even if None or unexpected type
         licensed_states = []
     contactId = data.get("contact_id", "PaSsW0rd@33")
     password = customData.get('password', contactId+"$2#")
@@ -452,11 +452,13 @@ def agent_create_or_update_callback():
     if not all([email, role]):
         return jsonify({'error': 'Email and role are required'}), 400
 
-    # users_response = supabase.auth.admin.list_users()
-    existing_user = supabase.auth.admin.get_user_by_email(email)
-    # Check if user already exists
-    # existing_user = next(
-    #   (u for u in users_response if u.email == email), None)
+    existing_user = None
+    try:
+        existing_user = supabase.table('profiles').select(
+            '*').eq('email', email).single().execute().data
+    except APIError as e:
+        pass
+
     isAgent = role == 'agent'
     new_profile = {
         'email': email,
@@ -468,21 +470,15 @@ def agent_create_or_update_callback():
         'phone': phone,
         'is_suspended': False
     }
-    # If user exists, update their profile
-    if existing_user:
-        user_id = existing_user.id
 
-        # Update the user profile in the database
+    if existing_user:
+        user_id = existing_user["id"]
+
         supabase.table('profiles').update(
             new_profile).eq('id', user_id).execute()
 
-        # if profile_response.status_code == 200:
-        #     return jsonify({'id': user_id, 'message': 'User profile updated'}), 200
-        # else:
-        #     return jsonify({'error': 'Failed to update profile'}), 500
         return jsonify({'id': user_id, 'message': 'User profile updated'}), 200
 
-    # If user does not exist, create a new user
     user_response = supabase.auth.admin.create_user({
         'email': email,
         'password': password,
@@ -492,12 +488,8 @@ def agent_create_or_update_callback():
 
     user_id = user_response.user.id
 
-    # Create a new profile for the user
-
-    # Insert the new profile into the profiles table
-    profile_response = supabase.table('profiles').insert(
-        new_profile).execute()
-
+    data = supabase.table('profiles').update(
+        new_profile).eq('id', user_id).execute()
     return jsonify({'id': user_id, 'message': 'User created'}), 201
 
 
@@ -514,15 +506,16 @@ def agent_subscription_update_callback():
     if not all([email, role]):
         return jsonify({'error': 'Email and role are required'}), 400
 
-    # users_response = supabase.auth.admin.list_users()
-    existing_user = supabase.auth.admin.get_user_by_email(email)
-    # Check if user already exists
-    # existing_user = next(
-    #    (u for u in users_response if u.email == email), None)
+    existing_user = None
+    try:
+        existing_user = supabase.table('profiles').select(
+            '*').eq('email', email).single().execute().data
+    except APIError as e:
+        pass
 
     # If user exists, update their profile
     if existing_user:
-        user_id = existing_user.id
+        user_id = existing_user["id"]
         new_profile = {
             'email': email,
             'is_suspended': status == "failed"
@@ -532,7 +525,7 @@ def agent_subscription_update_callback():
 
         return jsonify({'id': user_id, 'message': 'Subscription updated'}), 200
 
-    return jsonify({'error': 'Failed to create profile'}), 500
+    return jsonify({'error': 'Failed to update profile'}), 500
 
 
 def format_phone_number(phone: str) -> str:
@@ -668,4 +661,3 @@ def update_contact_custom_fields():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=30000)
-
