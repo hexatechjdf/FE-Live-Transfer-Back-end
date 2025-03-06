@@ -38,6 +38,39 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Authentication decorator using Supabase
 
 
+def verify_token(token: str):
+    try:
+        user = supabase.auth.api.get_user(token)
+        if user:
+            return user
+        else:
+            return None
+    except Exception:
+        return None
+
+
+def require_authentication(allowed_roles=None):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            token = request.headers.get("Authorization")
+            if not token or not token.startswith("Bearer "):
+                return jsonify({"error": "Token is missing"}), 403
+            token = token.split("Bearer ")[-1]
+            user = verify_token(token)
+            if not user:
+                return jsonify({"error": "Forbidden: Invalid token"}), 403
+
+            user_role = user.get("role")
+
+            if allowed_roles and user_role not in allowed_roles:
+                return jsonify({"error": f"Forbidden: Access restricted to {', '.join(allowed_roles)} only"}), 403
+
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def require_auth(allowed_roles=None):
     def decorator(f):
         @wraps(f)
@@ -436,7 +469,7 @@ def agent_create_or_update_callback():
     data = request.get_json()
 
     email = data.get('email').lower()  # Convert email to lowercase
-    full_name = data.get('name')
+    full_name = data.get('full_name', data.get('name', ''))
     role = "agent"
     customData = data.get('customData', {})
     fe_plan = customData.get('fe_plan', None)
@@ -449,7 +482,7 @@ def agent_create_or_update_callback():
         licensed_states = []
     contactId = data.get("contact_id", "PaSsW0rd@33")
     password = customData.get('password', contactId+"$2#")
-    phone = None
+    phone = customData.get('phone', None)
 
     if not all([email, role]):
         return jsonify({'error': 'Email and role are required'}), 400
@@ -461,7 +494,7 @@ def agent_create_or_update_callback():
     except APIError as e:
         pass
 
-    isAgent = role == 'agent'
+    isAgent = True
     new_profile = {
         'email': email,
         'role': role,
