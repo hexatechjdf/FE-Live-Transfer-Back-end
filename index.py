@@ -8,6 +8,7 @@
 # if __name__ == '__main__':
 #     socketio.run(app, debug=True, host="0.0.0.0", port=5000)
 
+import base64
 from postgrest.exceptions import APIError
 from flask import request, jsonify
 import json
@@ -38,18 +39,29 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Authentication decorator using Supabase
 
 
-def verify_token(token: str):
+def decode_jwt(token):
+    parts = token.split('.')
+
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT token")
+
+    # print(parts[1])
+    payload = json.loads(base64.b64decode(parts[1]+'==')) or None
+
+    return payload
+
+
+# Example Usage:
+def get_user_by_token(auth_token):
     try:
-        user = supabase.auth.api.get_user(token)
-        if user:
-            return user
-        else:
-            return None
-    except Exception:
+        response = supabase.auth.get_user(auth_token)
+        return response.user  # Returns the user data
+    except Exception as e:
+        print(f"Error fetching user: {e}")
         return None
 
 
-def require_authentication(allowed_roles=None):
+def require_auth(allowed_roles=None):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -57,21 +69,28 @@ def require_authentication(allowed_roles=None):
             if not token or not token.startswith("Bearer "):
                 return jsonify({"error": "Token is missing"}), 403
             token = token.split("Bearer ")[-1]
-            user = verify_token(token)
+            user = decode_jwt(token)
+
             if not user:
                 return jsonify({"error": "Forbidden: Invalid token"}), 403
 
-            user_role = user.get("role")
+            # user_role = user.get("user_role", None)
+            # request.user_role = user_role
 
-            if allowed_roles and user_role not in allowed_roles:
-                return jsonify({"error": f"Forbidden: Access restricted to {', '.join(allowed_roles)} only"}), 403
+            # if allowed_roles and user_role not in allowed_roles:
+            #     return jsonify({"error": f"Forbidden: Access restricted to {', '.join(allowed_roles)} only - Relogin if role is correct"}), 403
+            authUser = get_user_by_token(token)
+            if not authUser:
+                return jsonify({"error": "unauthorized"}), 401
+
+            request.auth_user = authUser
 
             return func(*args, **kwargs)
         return wrapper
     return decorator
 
 
-def require_auth(allowed_roles=None):
+def require_authentication(allowed_roles=None):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
@@ -167,10 +186,13 @@ def refresh():
 
 
 @app.route('/users', methods=['GET'])
-# @require_auth(['super_admin'])
+@require_auth(['super_admin', 'opener'])
 def list_users():
     try:
+
         role = request.args.get('role')
+        # if request.user_role == 'opener':
+        #     role = 'agent'
         response = supabase.table('profiles').select(
             "*").neq('role', 'super_admin')
         if role:
@@ -183,7 +205,7 @@ def list_users():
 
 
 @app.route('/users', methods=['POST'])
-# @require_auth(['super_admin'])
+@require_auth(['super_admin'])
 def create_user():
     try:
         data = request.get_json()
@@ -337,7 +359,7 @@ def update_agent_status():
 
 
 @app.route('/me/queue', methods=['GET'])
-@require_auth(['agent'])
+@require_auth(['agent', 'opener'])
 def get_queue_position():
     user_id = request.user_id
     queue_entry = supabase.table('agent_queue').select(
@@ -349,7 +371,7 @@ def get_queue_position():
 
 
 @app.route('/me/status', methods=['PUT'])
-@require_auth(['opener'])
+@require_auth(['opener', 'agent'])
 def update_opener_status():
     data = request.get_json()
     new_status = data.get('status')
@@ -367,7 +389,7 @@ def update_opener_status():
 
 
 @app.route('/transfers', methods=['POST'])
-# @require_auth(['opener'])
+@require_auth(['opener'])
 def record_transfer():
     data = request.get_json()
     agent_id = data.get('agent_id')
@@ -476,6 +498,11 @@ def agent_create_or_update_callback():
     full_name = data.get('full_name', data.get('name', ''))
     role = "agent"
     customData = data.get('customData', {})
+    authKey = customData.get('authKey', None)
+
+    # if authKey != 'vtzlrx4xH0iuwT7sBvYPcgmkvPtTb3jtygxUCWdS7tHY9wPXJSJ7aKbyOjciY8xm':
+    #   return jsonify({'error': 'Unauthorized'}), 401
+
     fe_plan = customData.get('fe_plan', None)
     crm_plan = customData.get('crm_plan', None)
     licensed_states = customData.get('licensed_states', None)
@@ -503,12 +530,17 @@ def agent_create_or_update_callback():
         'email': email,
         'role': role,
         'full_name': full_name,
-        'fe_plan': fe_plan if isAgent else None,
-        'crm_plan': crm_plan if isAgent else None,
-        'licensed_states': licensed_states if isAgent else None,
-        'phone': phone,
-        'is_suspended': False
     }
+    if fe_plan is not None:
+        new_profile['fe_plan'] = fe_plan
+    if licensed_states is not None:
+        new_profile['licensed_states'] = licensed_states
+        if contactId is not None:
+            new_profile['contact_id'] = contactId
+    if crm_plan is not None:
+        new_profile['crm_plan'] = fe_plan
+    if phone is not None:
+        new_profile['phone'] = phone
 
     if existing_user:
         user_id = existing_user["id"]
@@ -577,6 +609,7 @@ settings = supabase.table('settings').select(
 
 
 @app.route('/search_contacts', methods=['GET'])
+@require_auth(['opener'])
 def search_ghl_contacts():
 
     GHL_API_URL = os.environ.get('GHL_API_URL')
@@ -639,6 +672,7 @@ def search_ghl_contacts():
 
 
 @app.route('/update_contact_custom_fields', methods=['PUT'])
+@require_auth(['opener'])
 def update_contact_custom_fields():
     try:
         GHL_API_URL = os.environ.get('GHL_API_URL')
