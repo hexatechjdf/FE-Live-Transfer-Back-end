@@ -185,50 +185,54 @@ def list_users():
 @app.route('/users', methods=['POST'])
 # @require_auth(['super_admin'])
 def create_user():
-    data = request.get_json()
-    email = data.get('email')
-    full_name = data.get('full_name')
-    phone = data.get('phone')
-    role = data.get('role')
-    fe_plan = data.get('fe_plan')
-    crm_plan = data.get('crm_plan')
-    licensed_states = data.get('licensed_states')
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        full_name = data.get('full_name')
+        phone = data.get('phone')
+        role = data.get('role')
+        fe_plan = data.get('fe_plan')
+        crm_plan = data.get('crm_plan')
+        licensed_states = data.get('licensed_states')
+        password = data.get('password')
 
-    if not all([email, role]):
-        return jsonify({'error': 'Email and role are required'}), 400
+        if not all([email, role]):
+            return jsonify({'error': 'Email and role are required'}), 400
 
-    users_response = supabase.auth.admin.list_users()
+        users_response = supabase.auth.admin.list_users()
 
-    existing_user = next(
-        (u for u in users_response if u.email == email), None)
-    if existing_user:
-        return jsonify({'error': 'User already exists'}), 409
+        existing_user = next(
+            (u for u in users_response if u.email == email), None)
+        if existing_user:
+            return jsonify({'error': 'User already exists'}), 409
 
-    user_response = supabase.auth.admin.create_user({
-        'email': email,
-        'password': 'some-random-password',
-        'user_metadata': {'role': role, 'full_name': full_name, 'phone': phone},
-        'email_confirm': True
-    })
+        user_response = supabase.auth.admin.create_user({
+            'email': email,
+            'password': password,
+            'user_metadata': {'role': role, 'full_name': full_name, 'phone': phone},
+            'email_confirm': True
+        })
 
-    user_id = user_response.user.id
+        user_id = user_response.user.id
 
-    new_profile = {
-        # 'id': user_id,
-        'email': email,
-        'role': role,
-        'full_name': full_name,
-        'fe_plan': fe_plan if role == 'agent' else None,
-        'crm_plan': crm_plan if role == 'agent' else None,
-        'licensed_states': licensed_states if role == 'agent' else None,
-        'phone': phone,
-        'is_suspended': False
-    }
+        new_profile = {
+            # 'id': user_id,
+            'email': email,
+            'role': role,
+            'full_name': full_name,
+            'fe_plan': fe_plan if role == 'agent' else None,
+            'crm_plan': crm_plan if role == 'agent' else None,
+            'licensed_states': licensed_states if role == 'agent' else None,
+            'phone': phone,
+            'is_suspended': False
+        }
 
-    profile_response = supabase.table('profiles').update(
-        new_profile).eq('id', user_id).execute()
+        profile_response = supabase.table('profiles').update(
+            new_profile).eq('id', user_id).execute()
 
-    return jsonify({'id': user_id, 'message': 'User created'}), 201
+        return jsonify({'id': user_id, 'message': 'User created'}), 201
+    except Exception as e:
+        return jsonify({'message': "Failed to create user"}), 500
 
 
 @app.route('/users/<user_id>', methods=['GET'])
