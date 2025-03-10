@@ -23,6 +23,7 @@ import urllib
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from utils import get_id_value_pair_using_jsonpath
 
 load_dotenv()
 # Flask app setup
@@ -653,6 +654,12 @@ def search_ghl_contacts():
 
         data = response.json()
 
+        print('###############( Test Block )#################')
+        print()
+        print(data.get("customFields"))
+        print()
+        print('#############( End Test Block )###############')
+
         contacts = [
             {
                 'id': contact.get('id'),
@@ -660,15 +667,42 @@ def search_ghl_contacts():
                 'lastName':  contact.get('lastNameLowerCase', contact.get('lastName', '').lower()),
 
                 'email': contact.get('email'),
-                'phone': format_phone_number(contact.get('phone', '')) if contact.get('phone') else None
+                'phone': format_phone_number(contact.get('phone', '')) if contact.get('phone') else None,
+                **get_contact_fields(contact.get('customFields'))
             }
             for contact in data.get('contacts', [])
         ]
+        print('###############( Test Block )#################')
+        print()
+        print(contacts)
+        print()
+        print('#############( End Test Block )###############')
 
         return jsonify({'contacts': contacts})
 
     except Exception as error:
+        print('###############( Test Block )#################')
+        print()
+        print(error)
+        print()
+        print('#############( End Test Block )###############')
         return jsonify({'error': f'Error searching GHL contacts: {str(error)}'}), 500
+
+
+def get_contact_fields(fields):
+    customFields = {}
+    total = 0
+    for x in fields:
+        if x.get("id") == "AzZOefnH3LeaTwpICcjF":
+            total += 1
+            customFields['Last Duty Assignment'] = x.get("value")
+        if x.get("id") == "ryZjrsZTatb5JiljOUbd":
+            total += 1
+            customFields['Beneficiary Name'] = x.get("value")
+        if total == 2:
+            break
+
+    return customFields
 
 
 @app.route('/update_contact_custom_fields', methods=['PUT'])
