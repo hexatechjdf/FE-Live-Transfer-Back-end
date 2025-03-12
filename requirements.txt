@@ -24,9 +24,11 @@ hyperframe==6.1.0
 idna==3.10
 itsdangerous==2.2.0
 Jinja2==3.1.5
+jsonpath-ng==1.7.0
 MarkupSafe==3.0.2
 multidict==6.1.0
 packaging==24.2
+ply==3.11
 postgrest==0.19.3
 propcache==0.2.1
 pydantic==2.10.6

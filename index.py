@@ -397,9 +397,9 @@ def record_transfer():
     notes = data.get('notes', '{}')
 
     # Fetch the most recent status record for the given agent
-    agent_status = supabase.table('user_agent_status').select(
+    agent_status = supabase.table('profiles').select(
         'status'
-    ).eq('agent_id', agent_id).order('created_at', desc=True).limit(1).execute().data
+    ).eq('id', agent_id).limit(1).execute().data
 
     if not agent_status or agent_status[0]['status'] != 'ready':
         return jsonify({'error': 'Agent not ready'}), 400
