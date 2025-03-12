@@ -414,8 +414,8 @@ def record_transfer():
 
     if response.data:
         transfer_id = response.data[0]['id']
-        supabase.table('user_agent_status').update(
-            {'status': 'busy'}).eq('agent_id', agent_id).execute()
+        supabase.table('profiles').update(
+            {'status': 'busy'}).eq('id', agent_id).execute()
         supabase.table('agent_queue').delete().eq(
             'agent_id', agent_id).execute()
         return jsonify({'transfer_id': transfer_id, 'message': 'Transfer recorded'}), 201
